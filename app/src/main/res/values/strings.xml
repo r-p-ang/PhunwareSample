@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <string name="app_name">Phunware Sample App</string>
+    <string name="title_item_detail">Details</string>
+        
+    <string name="no_image">Image not found</string>
+    
+    <string name="action_share">Share</string>
+</resources>
