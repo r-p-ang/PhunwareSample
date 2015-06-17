@@ -6,19 +6,17 @@ import java.util.List;
 
 import android.app.Fragment;
 import android.app.LoaderManager;
-import android.content.Context;
 import android.content.Intent;
 import android.content.Loader;
 import android.graphics.Bitmap;
 import android.graphics.Matrix;
+import android.net.Uri;
 import android.os.Bundle;
 import android.util.DisplayMetrics;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
-import android.widget.ArrayAdapter;
 import android.widget.ImageView;
-import android.widget.ListView;
 import android.widget.TextView;
 
 import com.rogerang.phunwaresample.content.ScheduleItem;
@@ -33,7 +31,7 @@ import com.rogerang.phunwaresample.content.VenueImageLoader;
  * on handsets.
  * 
  */
-public class ItemDetailFragment extends Fragment implements LoaderManager.LoaderCallbacks<Bitmap> {
+public class ItemDetailFragment extends Fragment implements LoaderManager.LoaderCallbacks<Bitmap>, View.OnClickListener {
     /**
      * The fragment argument representing the item ID that this fragment
      * represents.
@@ -48,50 +46,12 @@ public class ItemDetailFragment extends Fragment implements LoaderManager.Loader
     // venue image
     private ImageView mImageView;
     private View noImageView;
-    
-    /**
-     * Custom list adapter for ScheduleItems.
-     * @author Roger
-     *
-     */
-    public class ScheduleAdapter extends ArrayAdapter<ScheduleItem> {
-    	private final LayoutInflater mInflater;    
-    	private final SimpleDateFormat dateFormat = new SimpleDateFormat("E M/d");
-    	private final SimpleDateFormat timeFormat = new SimpleDateFormat("h:mma");
-    	
-    	public ScheduleAdapter(Context context, List<ScheduleItem> venueData) {
-    		super(context, R.layout.schedule_list_entry, venueData);
-    		mInflater = (LayoutInflater) context.getSystemService(Context.LAYOUT_INFLATER_SERVICE);
-    	}
 
-    	public View getView(int position, View convertView, ViewGroup parent) {
-    		// Inflate a view template
-    		if (convertView == null) {
-    			convertView = mInflater.inflate(R.layout.schedule_list_entry, parent, false);
-    		}
-    		TextView tv = (TextView) convertView;    		
-    		ScheduleItem item = getItem(position);    		
-    		     		
-    		Date startDate = item.getStartDate();
-    		Date endDate = item.getEndDate();
-    		
-    		if (startDate != null && endDate != null) {
-    			String startDateStr = dateFormat.format(startDate);
-    			String schedule =  startDateStr + " " + timeFormat.format(startDate) + " to ";
+	// date and time formats for schedule items
+	private final SimpleDateFormat dateFormat = new SimpleDateFormat("E M/d");
+	private final SimpleDateFormat timeFormat = new SimpleDateFormat("h:mma");
 
-    			// don't print end date if the same as start date
-    			String endDateStr  = dateFormat.format(endDate);
-    			if (!endDateStr.equals(startDateStr)) {
-    				schedule += endDateStr + " ";
-    			}
-    			schedule += timeFormat.format(endDate);
-    			
-    			tv.setText(schedule);            		
-    		}
-    		return convertView;
-    	}
-    }
-    
+
     /**
      * Mandatory empty constructor for the fragment manager to instantiate the
      * fragment (e.g. upon screen orientation changes).
@@ -119,21 +79,56 @@ public class ItemDetailFragment extends Fragment implements LoaderManager.Loader
         if (mItem != null) {            
         	mImageView = (ImageView) rootView.findViewById(R.id.imageView1);        	
         	noImageView = rootView.findViewById(R.id.noImageText);     
-        	
-            ((TextView) rootView.findViewById(R.id.venueDetailNameText)).setText(mItem.getName());
-            ((TextView) rootView.findViewById(R.id.venueDetailAddressText)).setText(mItem.getAddress());
+
+			String txt = mItem.getName();
+            ((TextView) rootView.findViewById(R.id.venueDetailNameText)).setText(txt != null ? txt : "");
+
+			txt = mItem.getAddress();
+            ((TextView) rootView.findViewById(R.id.venueDetailAddressText)).setText(txt != null ? txt : "");
+
+			txt = mItem.getPhone();
+			TextView tv = (TextView) rootView.findViewById(R.id.venueDetailPhoneText);
+			tv.setOnClickListener(this);
+			if (txt != null && !txt.isEmpty()) {
+				tv.setText(txt);
+			} else {
+				tv.setVisibility(View.GONE);
+			}
 
             // populate schedule list
             List<ScheduleItem> scheduleList = mItem.getSchedule();
-            if (scheduleList != null && !scheduleList.isEmpty()) {            	
-            	ListView lv = (ListView) rootView.findViewById(R.id.scheduleList);
-            	lv.setAdapter(new ScheduleAdapter(getActivity(), scheduleList));
-            } 
+            if (scheduleList != null && !scheduleList.isEmpty()) {
+				ViewGroup parent = (ViewGroup) rootView.findViewById(R.id.item_detail);
+
+				for (ScheduleItem item : scheduleList) {
+					addScheduleItem(inflater, parent, item);
+				}
+            }
         }
 
         return rootView;
     }
-    
+
+	private void addScheduleItem(LayoutInflater inflater,  ViewGroup parent, ScheduleItem item) {
+		Date startDate = item.getStartDate();
+		Date endDate = item.getEndDate();
+
+		if (startDate != null && endDate != null) {
+			TextView tv = (TextView) inflater.inflate(R.layout.schedule_list_entry, parent, false);
+			String startDateStr = dateFormat.format(startDate);
+			String schedule =  startDateStr + " " + timeFormat.format(startDate) + " to ";
+
+			// don't print end date if the same as start date
+			String endDateStr  = dateFormat.format(endDate);
+			if (!endDateStr.equals(startDateStr)) {
+				schedule += endDateStr + " ";
+			}
+			schedule += timeFormat.format(endDate);
+
+			tv.setText(schedule);
+			parent.addView(tv);
+		}
+	}
     
     @Override 
     public void onActivityCreated(Bundle savedInstanceState) {
@@ -148,7 +143,10 @@ public class ItemDetailFragment extends Fragment implements LoaderManager.Loader
         	}
         } 
     }
-    
+
+	/**
+	 * Share venue name and address for currently displayed venue.
+	 */
     public void shareVenue() {
     	if (mItem != null) {
     		String msg = "";
@@ -218,5 +216,19 @@ public class ItemDetailFragment extends Fragment implements LoaderManager.Loader
 	public void onLoaderReset(Loader<Bitmap> loader) {
 		mImageView.setVisibility(View.GONE);
 		noImageView.setVisibility(View.VISIBLE);
+	}
+
+	@Override
+	public void onClick(View v) {
+		int id = v.getId();
+		if (id == R.id.venueDetailPhoneText) {
+			TextView tv = (TextView) v;
+			Intent intent = new Intent();
+			intent.setAction(Intent.ACTION_DIAL);
+			intent.setData(Uri.parse("tel:" + tv.getText()));
+			if (intent.resolveActivity(getActivity().getPackageManager()) != null) {
+				startActivity(intent);
+			}
+		}
 	}
 }
