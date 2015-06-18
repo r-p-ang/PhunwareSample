@@ -1,5 +1,21 @@
 package com.rogerang.phunwaresample.content;
 
+import android.content.AsyncTaskLoader;
+import android.content.Context;
+import android.support.v4.util.LongSparseArray;
+
+import com.google.gson.FieldNamingPolicy;
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
+import com.google.gson.JsonDeserializationContext;
+import com.google.gson.JsonDeserializer;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonParseException;
+import com.google.gson.reflect.TypeToken;
+
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.lang.reflect.Type;
@@ -11,25 +27,14 @@ import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 
-import com.google.gson.FieldNamingPolicy;
-import com.google.gson.Gson;
-import com.google.gson.GsonBuilder;
-import com.google.gson.JsonDeserializationContext;
-import com.google.gson.JsonDeserializer;
-import com.google.gson.JsonElement;
-import com.google.gson.JsonParseException;
-import com.google.gson.reflect.TypeToken;
-
-import android.content.AsyncTaskLoader;
-import android.content.Context;
-import android.support.v4.util.LongSparseArray;
-
 /**
  * A custom Loader that loads all of the venue data.
  */
 public class VenueLoader extends AsyncTaskLoader<List<Venue>> {
-	List<Venue> mVenues;
+	private List<Venue> mVenues = null; // current data
 	private Context mContext;
+
+	private final static String CACHE_FILE = "venue_data";
 	
 	// Since Venue IDs are long, using recommended LongSparseArray
     public static LongSparseArray<Venue> ITEM_MAP = new LongSparseArray<Venue>();
@@ -56,18 +61,48 @@ public class VenueLoader extends AsyncTaskLoader<List<Venue>> {
 			}
     	}
     }
-    
+
+	/**
+	 * Load cached venue data.  Check URL and if newer download to cache.
+	 * @return List of venue data.  May be empty list.
+	 */
 	@Override
 	public List<Venue> loadInBackground() {
 		HttpURLConnection urlConnection = null;
 		InputStream inputStream = null;
+		FileOutputStream fileOutputStream = null;
 		List<Venue> newData = null;
-		
+		long currentTime = System.currentTimeMillis();
+
 		try {
+			File cacheFile = new File(mContext.getCacheDir(), CACHE_FILE);
+			long lastUpdateTime = 0;
+
+			// check for cache data and when last modified
+			if (cacheFile.exists())
+				lastUpdateTime = cacheFile.lastModified();
+
 			URL mURL = new URL("https://s3.amazonaws.com/jon-hancock-phunware/nflapi-static.json");
-			
 			urlConnection= (HttpURLConnection) mURL.openConnection();
-            inputStream = urlConnection.getInputStream();            
+			long lastModified = urlConnection.getHeaderFieldDate("Last-Modified", currentTime);
+
+			if (lastModified > lastUpdateTime) {
+				// download data to cache file
+				inputStream = urlConnection.getInputStream();
+				fileOutputStream = new FileOutputStream(cacheFile);
+
+				byte buffer[] = new byte[4096];
+				int count;
+				while ((count = inputStream.read(buffer)) != -1) {
+					fileOutputStream.write(buffer, 0, count);
+				}
+
+				fileOutputStream.close();
+				inputStream.close();
+			}
+
+			// load data from file
+			inputStream = new FileInputStream(cacheFile);
 			InputStreamReader reader = new InputStreamReader(inputStream, "UTF-8");
 			Type venueType = new TypeToken<List<Venue>>() {}.getType();            
 			GsonBuilder gsonBuilder = new GsonBuilder().setFieldNamingPolicy(FieldNamingPolicy.LOWER_CASE_WITH_UNDERSCORES);
@@ -82,6 +117,8 @@ public class VenueLoader extends AsyncTaskLoader<List<Venue>> {
 					inputStream.close();
 				if (urlConnection != null)
 					urlConnection.disconnect();
+				if (fileOutputStream != null)
+					fileOutputStream.close();
 			} catch (Exception squish) {
 				squish.printStackTrace();
 			}
@@ -101,9 +138,11 @@ public class VenueLoader extends AsyncTaskLoader<List<Venue>> {
 			// don't need the result.
 			if (venues != null) {
 				onReleaseResources(venues);
+				return;
 			}
 		}
-		List<Venue> oldVenues = mVenues;
+
+		List<Venue>  oldVenues = mVenues;
 		mVenues = venues;
 
 		ITEM_MAP.clear();
@@ -174,7 +213,7 @@ public class VenueLoader extends AsyncTaskLoader<List<Venue>> {
 	 * Helper function to take care of releasing resources associated
 	 * with an actively loaded data set.
 	 */
-	protected void onReleaseResources(List<Venue> venus) {
+	protected void onReleaseResources(List<Venue> venues) {
 		// For a simple List<> there is nothing to do.  For something
 		// like a Cursor, we would close it here.
 	}
